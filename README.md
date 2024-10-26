@@ -2,6 +2,8 @@
 
 This Continuous-Variable Quantum Key Distribution (CV-QKD) simulation demonstrates the effectiveness of a wave attack on noise levels during quantum key distribution. The project allows a comparison between normal and attack scenarios, illustrating how the wave attack maintains low noise levels, thus showing its effectiveness in going undetected.
 
+This simulation is inspired by concepts from the paper: [Quantum Hacking on Quantum Key Distribution using Homodyne Detection](https://arxiv.org/pdf/1402.6921).
+
 ## Features
 
 - **Wave Attack Simulation**: Simulates a wave attack to assess its effectiveness in maintaining noise levels similar to a normal scenario.
