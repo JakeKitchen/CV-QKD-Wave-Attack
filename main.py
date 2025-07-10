@@ -1,8 +1,9 @@
 import pennylane as qml
 import numpy as np
 
-N0 = 1.0
-I_LO = 1e8
+# Constants
+N0 = 1.0  # Shot noise unit
+I_LO = 1e4  # Local oscillator amplitude (scaled for realism)
 num_trials = 1000
 
 wavelengths = {
@@ -12,72 +13,69 @@ wavelengths = {
 
 def calculate_noise(eta_ch, noise_real, r1, r2):
     """
-    Calculates noise for the given scenario with attenuation.
-
-    Args:
-        eta_ch (float): Channel efficiency.
-        noise_real (float): Shot noise level.
-        r1, r2 (float): Attenuation ratios.
-
-    Returns:
-        float: Calculated noise.
+    Calculates total noise under channel and attenuation effects.
     """
     return (2 + noise_real) * N0 / eta_ch + (r1 + r2 - 2) * N0 / eta_ch
 
 dev = qml.device("default.gaussian", wires=2)
 
 @qml.qnode(dev)
-def measure_x_quadrature(alpha, params):
+def homodyne_measure(alpha, trans_signal, trans_LO, quadrature='x'):
     """
-    Measures the X quadrature for the given scenario.
-
+    Simulates a homodyne measurement using a 50:50 beamsplitter.
+    
     Args:
-        alpha (float): Displacement amplitude.
-        params (dict): Contains transmittance values.
+        alpha (float): Signal displacement.
+        trans_signal (float): Signal transmittance.
+        trans_LO (float): LO transmittance.
+        quadrature (str): 'x' or 'p' for the quadrature type.
 
     Returns:
-        float: Expectation value of the X quadrature.
+        float: Expectation value of chosen quadrature.
     """
-    transmittance = params["signal"]
-    qml.Displacement(alpha * np.sqrt(transmittance), 0, wires=0)
-    qml.Displacement(I_LO * np.sqrt(transmittance), 0, wires=1)
-    return qml.expval(qml.QuadX(0))
+    # Prepare signal and LO
+    qml.Displacement(alpha * np.sqrt(trans_signal), 0.0, wires=0)
+    qml.Displacement(I_LO * np.sqrt(trans_LO), 0.0, wires=1)
+    
+    # Mix them
+    qml.Beamsplitter(np.pi / 4, 0, wires=[0, 1])
+    
+    # Measure quadrature on wire 0
+    if quadrature == 'x':
+        return qml.expval(qml.ops.cv.X(0))
+    elif quadrature == 'p':
+        return qml.expval(qml.ops.cv.P(0))
+    else:
+        raise ValueError("Quadrature must be 'x' or 'p'")
 
-@qml.qnode(dev)
-def measure_p_quadrature(alpha, params):
+def simulate_scenario(alpha_vals, scenario_params, eta_ch=0.9):
     """
-    Measures the P quadrature for the given scenario.
-
+    Runs simulated homodyne measurements for given alpha values and scenario.
+    
     Args:
-        alpha (float): Displacement amplitude.
-        params (dict): Contains transmittance values.
+        alpha_vals (np.ndarray): Array of signal amplitudes.
+        scenario_params (dict): Contains transmittance values.
+        eta_ch (float): Channel transmission efficiency.
 
     Returns:
-        float: Expectation value of the P quadrature.
-    """
-    transmittance = params["local_oscillator"]
-    qml.Displacement(alpha * np.sqrt(transmittance), 0, wires=0)
-    qml.Displacement(I_LO * np.sqrt(transmittance), 0, wires=1)
-    return qml.expval(qml.QuadP(1))
-
-def simulate_scenario(alpha_vals, scenario_params):
-    """
-    Simulates measurements for either normal or attack scenario.
-
-    Args:
-        alpha_vals (array): Array of initial alpha values.
-        scenario_params (dict): Parameters for either the normal or wave attack scenario.
-
-    Returns:
-        list: Noise levels for the given scenario.
+        list: Simulated noise values.
     """
     noises = []
     for alpha in alpha_vals:
         r1, r2 = np.random.choice([0.1, 0.5, 1.0], 2, replace=False)
-        X = measure_x_quadrature(alpha * np.sqrt(r1), scenario_params)
-        P = measure_p_quadrature(alpha * np.sqrt(r2), scenario_params)
+        
+        X = homodyne_measure(alpha * np.sqrt(r1),
+                             scenario_params["signal"],
+                             scenario_params["local_oscillator"],
+                             quadrature='x')
+        P = homodyne_measure(alpha * np.sqrt(r2),
+                             scenario_params["signal"],
+                             scenario_params["local_oscillator"],
+                             quadrature='p')
+        
+        # Simulated shot noise
         shot_noise = N0 * np.random.uniform(0.9, 1.1)
-        scenario_noise = calculate_noise(0.9, shot_noise, r1, r2)
+        scenario_noise = calculate_noise(eta_ch, shot_noise, r1, r2)
         noises.append(scenario_noise)
     return noises
 
